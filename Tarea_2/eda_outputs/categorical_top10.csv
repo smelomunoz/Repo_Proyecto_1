@@ -1,0 +1,17 @@
+variable,value,count,pct,cum_pct
+notify,Do Not Notify,141593,99.92,99.92
+notify,Send Email,119,0.08,100.0
+impact,2 - Medium,134335,94.79,94.79
+impact,3 - Low,3886,2.74,97.54
+impact,1 - High,3491,2.46,100.0
+urgency,2 - Medium,134094,94.62,94.62
+urgency,1 - High,4020,2.84,97.46
+urgency,3 - Low,3598,2.54,100.0
+priority,3 - Moderate,132452,93.47,93.47
+priority,4 - Low,4030,2.84,96.31
+priority,2 - High,2972,2.1,98.41
+priority,1 - Critical,2258,1.59,100.0
+caused_by,?,141689,99.98,99.98
+caused_by,CHG0000097,11,0.01,99.99
+caused_by,CHG0000132,7,0.0,100.0
+caused_by,CHG0001327,5,0.0,100.0

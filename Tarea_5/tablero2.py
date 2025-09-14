@@ -3,6 +3,8 @@ from dash import Dash, dcc, html, Input, Output
 import plotly.express as px
 import pandas as pd
 import numpy as np
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
 
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
@@ -211,6 +213,17 @@ def update_boxplot(factor_value):
     if not factor_value:
         return px.box(title="Selecciona un factor categórico")
     return make_boxplot(factor_value)
+@app.callback(
+    Output("anova-f", "figure"),
+    Output("anova-p", "figure"),
+    Input("anova-cats", "value"),
+)
+def update_anova(anova_cats):
+    use_cats = [c for c in (anova_cats or []) if c in df.columns]
+    anova_df = compute_anova(use_cats)
+    fig_f, fig_p = make_anova_figs(anova_df)
+    return fig_f, fig_p
+
 
 # ========= Main =========
 if __name__ == "__main__":

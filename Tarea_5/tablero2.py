@@ -215,6 +215,32 @@ def update_boxplot(factor_value):
     return make_boxplot(factor_value)
 
 @app.callback(
+    Output("heatmap", "figure"),
+    Input("num-checklist", "value")
+)
+
+def update_heatmap(selected_nums):
+    # recalcular heatmap con selección
+    use_nums = [n for n in (selected_nums or []) if n in df.columns]
+    cols = [Y] + use_nums
+    data = df[cols].copy()
+    if data.shape[1] < 2:
+        return px.imshow(
+            np.array([[1.0]]),
+            x=[Y], y=[Y],
+            title="Selecciona al menos una variable numérica",
+            text_auto=True, zmin=-1, zmax=1, color_continuous_scale="RdBu"
+        )
+    corr = data.corr()
+    fig = px.imshow(
+        corr, text_auto=".2f",
+        color_continuous_scale="RdBu", zmin=-1, zmax=1,
+        title="Correlaciones (selección actual)"
+    )
+    fig.update_layout(margin=dict(l=30, r=20, t=60, b=40))
+    return fig
+
+@app.callback(
     Output("anova-f", "figure"),
     Output("anova-p", "figure"),
     Input("anova-cats", "value"),

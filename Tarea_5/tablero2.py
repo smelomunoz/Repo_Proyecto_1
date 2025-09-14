@@ -3,6 +3,8 @@ from dash import Dash, dcc, html, Input, Output
 import plotly.express as px
 import pandas as pd
 import numpy as np
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
 
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
@@ -136,7 +138,7 @@ def make_anova_figs(anova_df: pd.DataFrame):
 
     fig_p = px.bar(
         anova_df_disp, x="neg_log10_p", y="Variable", orientation="h",
-        title="ANOVA — −log10(p-value) (más alto = más significativo)"
+        title="ANOVA — log10(p-value) (más alto = más significativo)"
     )
     for fig in (fig_f, fig_p):
         fig.update_layout(margin=dict(l=30, r=20, t=60, b=40))
@@ -211,6 +213,43 @@ def update_boxplot(factor_value):
     if not factor_value:
         return px.box(title="Selecciona un factor categórico")
     return make_boxplot(factor_value)
+
+@app.callback(
+    Output("heatmap", "figure"),
+    Input("num-checklist", "value")
+)
+
+def update_heatmap(selected_nums):
+    # recalcular heatmap con selección
+    use_nums = [n for n in (selected_nums or []) if n in df.columns]
+    cols = [Y] + use_nums
+    data = df[cols].copy()
+    if data.shape[1] < 2:
+        return px.imshow(
+            np.array([[1.0]]),
+            x=[Y], y=[Y],
+            title="Selecciona al menos una variable numérica",
+            text_auto=True, zmin=-1, zmax=1, color_continuous_scale="RdBu"
+        )
+    corr = data.corr()
+    fig = px.imshow(
+        corr, text_auto=".2f",
+        color_continuous_scale="RdBu", zmin=-1, zmax=1,
+        title="Correlaciones (selección actual)"
+    )
+    fig.update_layout(margin=dict(l=30, r=20, t=60, b=40))
+    return fig
+
+@app.callback(
+    Output("anova-f", "figure"),
+    Output("anova-p", "figure"),
+    Input("anova-cats", "value"),
+)
+def update_anova(anova_cats):
+    use_cats = [c for c in (anova_cats or []) if c in df.columns]
+    anova_df = compute_anova(use_cats)
+    fig_f, fig_p = make_anova_figs(anova_df)
+    return fig_f, fig_p
 
 # ========= Main =========
 if __name__ == "__main__":

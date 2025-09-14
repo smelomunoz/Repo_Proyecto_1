@@ -14,7 +14,7 @@ df=pd.read_csv("incident_event_log_clean.csv")
 
 # app.py
 # Dash dashboard: Boxplot de resolution_time_log por factor categórico + Heatmap de correlaciones
-# Ejecuta:  python app.py   y abre http://127.0.0.1:8070/
+# Ejecuta:  python app.py   y abre http://127.0.0.1:8055/
 
 
 Y = "resolution_time_log"
@@ -94,6 +94,54 @@ def make_corr_heatmap():
     fig.update_layout(margin=dict(l=30, r=20, t=60, b=40))
     return fig
 
+def compute_anova(cat_list):
+    """Calcula ANOVA (F y p) para cada variable categórica seleccionada."""
+    results = []
+    for var in (cat_list or []):
+        if var not in df.columns:
+            continue
+        try:
+            # Modelo lineal: Y ~ C(var)
+            model = smf.ols(f"{Y} ~ C({var})", data=df).fit()
+            anova_table = sm.stats.anova_lm(model, typ=2)
+            # F y p están en la primera fila (C(var))
+            row = anova_table.iloc[0]
+            results.append({
+                "Variable": var,
+                "F_value": float(row["F"]),
+                "p_value": float(row["PR(>F)"])
+            })
+        except Exception:
+            # si no se puede (categoría con 1 nivel, etc.), se omite
+            pass
+    res_df = pd.DataFrame(results)
+    if not res_df.empty:
+        res_df = res_df.sort_values("F_value", ascending=False)
+    return res_df
+
+def make_anova_figs(anova_df: pd.DataFrame):
+    if anova_df.empty:
+        return (
+            px.bar(title="ANOVA: sin variables o sin resultados"),
+            px.bar(title="ANOVA: sin variables o sin resultados")
+        )
+    fig_f = px.bar(
+        anova_df, x="F_value", y="Variable", orientation="h",
+        title="ANOVA — F-value (mayor = más explicativa)"
+    )
+    # Evitar -log10(0)
+    pvals = anova_df["p_value"].replace(0, np.nextafter(0, 1))
+    anova_df_disp = anova_df.copy()
+    anova_df_disp["neg_log10_p"] = -np.log10(pvals)
+
+    fig_p = px.bar(
+        anova_df_disp, x="neg_log10_p", y="Variable", orientation="h",
+        title="ANOVA — −log10(p-value) (más alto = más significativo)"
+    )
+    for fig in (fig_f, fig_p):
+        fig.update_layout(margin=dict(l=30, r=20, t=60, b=40))
+    return fig_f, fig_p
+
 # ========= App =========
 app = dash.Dash(__name__)
 app.title = "Incidentes — Exploración de Tiempo de Resolución"
@@ -135,6 +183,22 @@ app.layout = html.Div(
             "Revisa la relación entre resolution_time_log y métricas como reasignaciones, modificaciones, etc."
         ),
         dcc.Graph(id="heatmap", figure=make_corr_heatmap()),
+        html.H3("ANOVA por variables categóricas"),
+        html.P("Selecciona las variables categóricas para evaluar su poder explicativo individual sobre Y."),
+        dcc.Dropdown(
+            id="anova-cats",
+            options=[{"label": c, "value": c} for c in cat_vars],
+            value=cat_vars[:5] if len(cat_vars) > 0 else [],
+            multi=True,
+            placeholder="Selecciona variables categóricas"
+        ),
+        html.Div(
+            style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "16px"},
+            children=[
+                dcc.Graph(id="anova-f"),
+                dcc.Graph(id="anova-p"),
+            ]
+        ),
     ],
 )
 

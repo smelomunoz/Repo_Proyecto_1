@@ -1,0 +1,73 @@
+number: identificador del incidente (24,918 valores diferentes)
+
+incident state: ocho niveles que controlan las transiciones del proceso de gestión del incidente desde su apertura hasta su cierre
+
+active: atributo booleano que indica si el registro está activo o cerrado/cancelado
+
+reassignment_count: número de veces que el incidente cambió de grupo o de analista de soporte
+
+reopen_count: número de veces que la resolución del incidente fue rechazada por el solicitante
+
+sys_mod_count: número de actualizaciones del incidente hasta ese momento
+
+made_sla: atributo booleano que indica si el incidente superó el SLA (service level agreement) objetivo
+
+caller_id: identificador del usuario afectado
+
+opened_by: identificador del usuario que reportó el incidente
+
+opened_at: fecha y hora de apertura del incidente por el usuario
+
+sys_created_by: identificador del usuario que registró el incidente
+
+sys_created_at: fecha y hora de creación del incidente en el sistema
+
+sys_updated_by: identificador del usuario que actualizó el incidente y generó el registro actual
+
+sys_updated_at: fecha y hora de la actualización del incidente en el sistema
+
+contact_type: atributo categórico que indica por qué medio se reportó el incidente
+
+location: identificador del lugar afectado
+
+category: descripción de primer nivel del servicio afectado
+
+subcategory: descripción de segundo nivel del servicio afectado (relacionado con la categoría)
+
+u_symptom: descripción de la percepción del usuario sobre la disponibilidad del servicio
+
+cmdb_ci: (elemento de confirmación) identificador usado para reportar el elemento afectado (no obligatorio)
+
+impact: descripción del impacto causado por el incidente (valores: 1–Alto; 2–Medio; 3–Bajo)
+
+urgency: descripción de la urgencia informada por el usuario para la resolución del incidente (valores: 1–Alta; 2–Media; 3–Baja)
+
+priority: calculada por el sistema en base al 'impacto' y la 'urgencia'
+
+assignment_group: identificador del grupo de soporte encargado del incidente
+
+assigned_to: identificador del usuario encargado del incidente
+
+knowledge: atributo booleano que indica si se utilizó un documento de la base de conocimiento para resolver el incidente
+
+u_priority_confirmation: atributo booleano que indica si el campo de prioridad fue verificado
+
+notify: atributo categórico que indica si se generaron notificaciones para el incidente
+
+problem_id: identificador del problema asociado al incidente
+
+rfc: (solicitud de cambio) identificador de la solicitud de cambio asociada al incidente
+
+vendor: identificador del proveedor encargado del incidente
+
+caused_by: identificador de la RFC responsable del incidente
+
+close_code: identificador de la resolución del incidente
+
+resolved_by: identificador del usuario que resolvió el incidente
+
+resolved_at: fecha y hora en que el usuario resolvió el incidente (variable dependiente)
+
+closed_at: fecha y hora en que el usuario cerró el incidente (variable dependiente)
+
+Let me know if you'd like this in table format, or exported to a file like CSV or Excel.

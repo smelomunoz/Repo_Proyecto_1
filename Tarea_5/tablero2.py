@@ -6,6 +6,7 @@ import numpy as np
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 import os, json, joblib, tensorflow as tf
+import plotly.graph_objects as go 
 
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
@@ -880,7 +881,11 @@ REG_PREDS, REG_METRICS = load_model_artifacts()
 def update_regression_figs(model_key):
     if REG_PREDS is None:
         msg = "No se encontraron artefactos. Guarda predictions_test.csv y metrics.json desde Tarea_4."
-        return px.scatter(title=msg), px.scatter(title=msg), px.histogram(title=msg)
+        f1 = go.Figure(); f1.update_layout(title=msg)
+        f2 = go.Figure(); f2.update_layout(title=msg)
+        f3 = go.Figure(); f3.update_layout(title=msg)
+        return f1, f2, f3
+
     return make_regression_figures(REG_PREDS, model_key)
 
 

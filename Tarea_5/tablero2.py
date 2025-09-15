@@ -21,7 +21,6 @@ df=pd.read_csv("incident_event_log_clean.csv")
 
 Y = "resolution_time_log"
 
-# Sugerencias de variables categóricas candidatas (toma las que existan)
 candidate_cat = [
     "incident_state", "active", "made_sla", "opened_by",
     "contact_type", "location", "category", "subcategory",
@@ -29,30 +28,27 @@ candidate_cat = [
 ]
 cat_vars = [c for c in candidate_cat if c in df.columns]
 
-# Sugerencias de variables numéricas candidatas (toma las que existan)
 candidate_num = ["reassignment_count", "reopen_count", "sys_mod_count"]
 num_vars = [n for n in candidate_num if n in df.columns]
 
-# Limpieza mínima: quitar NaN de Y
 df = df.copy()
 df = df[np.isfinite(df[Y])]
 
 if "opened_at" in df.columns:
     df["opened_at"] = pd.to_datetime(df["opened_at"], errors="coerce")
 else:
-    # Si tu CSV tiene otro nombre de columna de apertura, cámbialo aquí
+   
     raise ValueError("La columna 'opened_at' no existe en el CSV.")
 
 if "number" not in df.columns:
     raise ValueError("La columna 'number' no existe en el CSV.")
 
-# Deduplicar por (number, opened_at) y armar df_time para las gráficas temporales
+
 df_time = (
     df.dropna(subset=["opened_at", "number"])
       .drop_duplicates(subset=["number", "opened_at"])
       .copy()
 )
-# Auxiliares
 if not df_time.empty:
     df_time["date"] = df_time["opened_at"].dt.date
     df_time["day_of_month"] = df_time["opened_at"].dt.day
@@ -68,7 +64,6 @@ def make_boxplot(factor: str):
     if factor not in df.columns:
         return px.box(title=f"Variable {factor} no encontrada")
 
-    # Ordenar categorías por media de Y (ayuda a comparar)
     order = (
         df.groupby(factor)[Y]
         .mean()
@@ -81,7 +76,7 @@ def make_boxplot(factor: str):
         x=factor,
         y=Y,
         category_orders={factor: order},
-        points="outliers",  # muestra outliers
+        points="outliers",  
         title=f"Distribución de {Y} por {factor}",
     )
     fig.update_layout(
@@ -98,7 +93,6 @@ def make_corr_heatmap():
     cols = [Y] + num_vars
     data = df[cols].copy()
 
-    # Calcular correlaciones (si hay al menos 2 columnas)
     if data.shape[1] < 2:
         return px.imshow(
             np.array([[1.0]]),
@@ -139,7 +133,6 @@ def compute_anova(cat_list):
                 "p_value": float(row["PR(>F)"])
             })
         except Exception:
-            # si no se puede (categoría con 1 nivel, etc.), se omite
             pass
     res_df = pd.DataFrame(results)
     if not res_df.empty:
@@ -156,7 +149,7 @@ def make_anova_figs(anova_df: pd.DataFrame):
         anova_df, x="F_value", y="Variable", orientation="h",
         title="ANOVA — F-value (mayor = más explicativa)"
     )
-    # Evitar -log10(0)
+
     pvals = anova_df["p_value"].replace(0, np.nextafter(0, 1))
     anova_df_disp = anova_df.copy()
     anova_df_disp["neg_log10_p"] = -np.log10(pvals)
@@ -177,12 +170,7 @@ def make_recurrence_figures(
     number_col: str = "number",
     opened_col: str = "opened_at"
 ):
-    """
-    Devuelve dos figuras Plotly:
-      - Serie temporal de incidentes únicos por periodo (D/W/M)
-      - Histograma de incidentes por día del mes (únicos)
-    Aplica deduplicación por (number_col, opened_col).
-    """
+   
     if number_col not in df_src.columns or opened_col not in df_src.columns:
         msg = f"Faltan columnas requeridas: '{number_col}' y/o '{opened_col}'"
         return px.line(title=msg), px.histogram(title=msg)
@@ -211,7 +199,6 @@ def make_recurrence_figures(
         return (px.line(title="Incidentes por periodo (sin datos en el rango)"),
                 px.histogram(title="Día del mes (sin datos en el rango)"))
 
-    # Serie temporal (re-sample + nunique por número)
     sub = sub.set_index(opened_col).sort_index()
     counts = sub.resample(agg)[number_col].nunique()
     ts_df = counts.reset_index()
@@ -242,6 +229,67 @@ def make_recurrence_figures(
 
     return ts_fig, dom_fig
 
+def make_channel_constancy_figures(
+    df_src: pd.DataFrame,
+    channel_col: str = "contact_type",
+    date_col: str = "opened_at",
+    period: str = "W",           # "D" diaria, "W" semanal, "M" mensual
+    channels_filter: list | None = None
+):
+    
+    if channel_col not in df_src.columns or date_col not in df_src.columns:
+        msg = f"Faltan columnas requeridas: '{channel_col}' y/o '{date_col}'"
+        return px.line(title=msg), px.bar(title=msg)
+
+    tmp = df_src.dropna(subset=[channel_col, date_col]).copy()
+    if channels_filter:
+        tmp = tmp[tmp[channel_col].isin(channels_filter)]
+    if tmp.empty:
+        return px.line(title="Sin datos para los canales seleccionados"), px.bar(title="Sin datos para los canales seleccionados")
+
+    # Resample por periodo y contar incidentes únicos por canal
+    tmp = tmp.set_index(date_col).sort_index()
+    grp = (
+        tmp.groupby(channel_col)
+           .resample(period)["number"].nunique()
+           .rename("count")
+           .reset_index()
+    )
+
+    # --- Serie temporal por canal ---
+    titulo_periodo = {"D": "diario", "W": "semanal", "M": "mensual"}.get(period, period)
+    fig_ts = px.line(
+        grp, x=date_col, y="count", color=channel_col,
+        title=f"Incidentes únicos por {titulo_periodo} y canal ({channel_col})"
+    )
+    fig_ts.update_layout(
+        xaxis_title="Fecha", yaxis_title="Incidentes únicos",
+        margin=dict(l=30, r=20, t=60, b=40)
+    )
+
+    # --- CV por canal (std/mean en el vector temporal de cada canal) ---
+    cv_df = (
+        grp.groupby(channel_col)["count"]
+           .agg(mean="mean", std="std")
+           .reset_index()
+    )
+    # Evitar división por 0
+    cv_df["CV"] = cv_df.apply(lambda r: (r["std"] / r["mean"]) if r["mean"] not in (0, np.nan) else np.nan, axis=1)
+    # Ordenar por menor CV (más constante arriba)
+    cv_df = cv_df.sort_values("CV", ascending=True)
+
+    fig_cv = px.bar(
+        cv_df, x="CV", y=channel_col, orientation="h",
+        hover_data=["mean", "std"],
+        title=f"Constancia por canal — Coeficiente de Variación (menor = más constante)"
+    )
+    fig_cv.update_layout(
+        xaxis_title="CV (std/mean)",
+        yaxis_title="Canal",
+        margin=dict(l=30, r=20, t=60, b=40)
+    )
+
+    return fig_ts, fig_cv
 
 # ========= App =========
 app = dash.Dash(__name__)
@@ -337,6 +385,57 @@ app.layout = html.Div(
             style={"display": "grid", "gridTemplateColumns": "1.5fr 1fr", "gap": "16px", "marginTop": "8px"},
             children=[dcc.Graph(id="ts-incidents"), dcc.Graph(id="hist-dom")]
         ),
+        html.Hr(style={"margin": "18px 0"}),
+
+        # ====== Constancia por canal ======
+        html.H3("¿Por qué medio se reportan de forma más constante los incidentes?"),
+        html.P("Explora la estabilidad por canal (menor CV = más constante). Usa el periodo y filtra canales."),
+
+        html.Div(
+            style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "16px"},
+            children=[
+                # Dropdown de PERIODO  (id correcto: ch-period)
+                html.Div([
+                    html.Div("Periodo de agregación:", style={"fontWeight": 600}),
+                    dcc.Dropdown(
+                        id="ch-period",
+                        options=[
+                            {"label": "Diario", "value": "D"},
+                            {"label": "Semanal", "value": "W"},
+                            {"label": "Mensual", "value": "M"},
+                        ],
+                        value="W",   # semanal por defecto
+                        clearable=False
+                    ),
+                ]),
+
+                # Dropdown de CANALES (id único: ch-filter)
+                html.Div([
+                    html.Div("Canales (contact_type):", style={"fontWeight": 600}),
+                    dcc.Dropdown(
+                        id="ch-filter",
+                        options=[
+                            {"label": str(x), "value": x}
+                            for x in sorted(
+                                df_time["contact_type"].dropna().unique(),
+                                key=lambda v: str(v).lower()
+                            )
+                        ] if "contact_type" in df_time.columns else [],
+                        value=None,
+                        multi=True,
+                        placeholder="(Opcional) Selecciona canales"
+                    )
+                ])
+            ]
+        ),
+
+        html.Div(
+            style={"display": "grid", "gridTemplateColumns": "1.5fr 1fr", "gap": "16px", "marginTop": "8px"},
+            children=[
+                dcc.Graph(id="ch-ts"),   # serie temporal por canal
+                dcc.Graph(id="ch-cv"),   # barras de CV
+            ]
+        ),
     ],
 )
 
@@ -380,6 +479,23 @@ def update_time_recurrence(start_date, end_date, agg):
         opened_col="opened_at"
     )
     return ts_fig, dom_fig
+@app.callback(
+    Output("ch-ts", "figure"),
+    Output("ch-cv", "figure"),
+    Input("ch-period", "value"),
+    Input("ch-filter", "value"),
+)
+
+def update_channel_constancy(period, channels_selected):
+    channels = channels_selected if channels_selected else None
+    fig_ts, fig_cv = make_channel_constancy_figures(
+        df_src=df_time,
+        channel_col="contact_type",   # cambia si tu columna se llama distinto
+        date_col="opened_at",
+        period=period,
+        channels_filter=channels
+    )
+    return fig_ts, fig_cv
 
 # ========= Main =========
 if __name__ == "__main__":

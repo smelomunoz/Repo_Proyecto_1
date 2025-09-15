@@ -354,7 +354,51 @@ def make_freq_critical_figure(
 # ================= Artifacts (modelo / evaluación) =================
 ART = load_predict_artifacts(ART_DIR)
 REG_PREDS, REG_METRICS = load_model_artifacts_for_eval(ART_DIR)
+def make_regression_figures(preds_df: pd.DataFrame, model_key: str):
+    """
+    Devuelve: fig_pred_vs_true, fig_resid_vs_pred, fig_resid_hist
+    """
+    use = preds_df[preds_df["model"] == model_key].copy()
+    if use.empty:
+        msg = f"Sin predicciones para '{model_key}'."
+        return px.scatter(title=msg), px.scatter(title=msg), px.histogram(title=msg)
 
+    use["residual"] = use["y_true"] - use["y_pred"]
+
+    # 1) Predicho vs Real
+    fig1 = px.scatter(
+        use, x="y_true", y="y_pred",
+        opacity=0.6,
+        title=f"Predicho vs Real — {model_key}",
+        labels={"y_true":"Real (h)", "y_pred":"Predicho (h)"}
+    )
+    # línea y=x
+    minv = float(np.nanmin([use["y_true"].min(), use["y_pred"].min()]))
+    maxv = float(np.nanmax([use["y_true"].max(), use["y_pred"].max()]))
+    fig1.add_shape(type="line", x0=minv, y0=minv, x1=maxv, y1=maxv,
+                   line=dict(dash="dash"))
+    fig1.update_layout(margin=dict(l=30, r=20, t=60, b=40))
+
+    # 2) Residuos vs Predicho
+    fig2 = px.scatter(
+        use, x="y_pred", y="residual",
+        opacity=0.6,
+        title=f"Residuos vs Predicho — {model_key}",
+        labels={"y_pred":"Predicho (h)", "residual":"Residuo (h)"},
+    )
+    fig2.add_hline(y=0, line_dash="dash")
+    fig2.update_layout(margin=dict(l=30, r=20, t=60, b=40))
+
+    # 3) Distribución de residuos
+    fig3 = px.histogram(
+        use, x="residual", nbins=40,
+        title=f"Distribución de residuos — {model_key}",
+        labels={"residual":"Residuo (h)"}
+    )
+    fig3.add_vline(x=0, line_dash="dash")
+    fig3.update_layout(margin=dict(l=30, r=20, t=60, b=40))
+
+    return fig1, fig2, fig3
 def apply_te_value(x_value, mapping: dict, global_mean: float) -> float:
     if x_value is None or (isinstance(x_value, float) and np.isnan(x_value)):
         return float(global_mean)

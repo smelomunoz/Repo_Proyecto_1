@@ -291,6 +291,117 @@ def make_channel_constancy_figures(
 
     return fig_ts, fig_cv
 
+def make_freq_critical_figure(
+    df: pd.DataFrame,
+    type_col: str | None = None,   # "category" o "subcategory"
+    top_n: int = 15,
+    chart: str = "bar"             # "bar" o "scatter"
+):
+
+    # --------- escoger columna de tipo ---------
+    if type_col is None:
+        if "category" in df.columns:
+            type_col = "category"
+        elif "subcategory" in df.columns:
+            type_col = "subcategory"
+        else:
+            return px.bar(title="No existe 'category' ni 'subcategory' en el dataset.")
+
+    if type_col not in df.columns:
+        return px.bar(title=f"La columna '{type_col}' no existe en el dataset.")
+
+    # --------- deduplicar por incidente ---------
+    if "number" not in df.columns:
+        return px.bar(title="No existe la columna 'number' para deduplicar incidentes.")
+    d0 = df.drop_duplicates(subset=["number"]).copy()
+
+    # --------- construir bandera de criticidad ---------
+    is_critical = pd.Series(False, index=d0.index)
+
+    # priority como fuente principal
+    if "priority" in d0.columns:
+        pr = d0["priority"].astype(str).str.lower()
+        # match P1, 1 - Critical, Critical, High, P2 High, etc.
+        is_critical |= pr.str.contains(r"\bp1\b|critical|high|1\s*-\s*critical|2\s*-\s*high", regex=True)
+
+    # si no hay priority fuerte, usar impact
+    if "impact" in d0.columns:
+        imp = d0["impact"].astype(str).str.lower()
+        # numérico 1 o texto "high" / "1 - high"
+        is_critical |= imp.eq("1") | imp.str.contains(r"\bhigh\b|1\s*-\s*high|1\s*-\s*critical")
+
+        # si impact es numérico
+        with np.errstate(invalid="ignore"):
+            is_critical |= pd.to_numeric(d0["impact"], errors="coerce").eq(1)
+
+    # como fallback, urgency
+    if "urgency" in d0.columns:
+        urg = d0["urgency"].astype(str).str.lower()
+        is_critical |= urg.eq("1") | urg.str.contains(r"\bhigh\b|1\s*-\s*high|1\s*-\s*critical")
+        with np.errstate(invalid="ignore"):
+            is_critical |= pd.to_numeric(d0["urgency"], errors="coerce").eq(1)
+
+    d0["is_critical"] = is_critical.fillna(False)
+
+    # --------- agregación por tipo ---------
+    g = (
+        d0.groupby(type_col, dropna=False)
+          .agg(incidents=("number", "nunique"),
+               critical=("is_critical", "sum"))
+          .reset_index()
+    )
+    g["critical_rate"] = np.where(g["incidents"] > 0, g["critical"] / g["incidents"], np.nan)
+
+    # ordenar por frecuencia y tomar top_n
+    g = g.sort_values("incidents", ascending=False).head(top_n)
+
+    # etiquetas bonitas
+    g["critical_pct"] = (g["critical_rate"] * 100).round(1)
+
+    # --------- graficar ---------
+    if chart == "scatter":
+        fig = px.scatter(
+            g,
+            x="incidents",
+            y="critical_rate",
+            size="critical",
+            color="critical_rate",
+            color_continuous_scale="Reds",
+            hover_data={type_col: True, "incidents": True, "critical": True, "critical_pct": True},
+            text=type_col,
+            title=f"Frecuencia vs. % crítico por {type_col} (top {top_n})"
+        )
+        fig.update_traces(textposition="top center")
+        fig.update_layout(
+            xaxis_title="Incidentes (frecuencia)",
+            yaxis_title="% crítico",
+            yaxis_tickformat=".0%",
+            margin=dict(l=30, r=20, t=60, b=60)
+        )
+        return fig
+
+    # barras coloreadas por % crítico
+    fig = px.bar(
+        g,
+        x=type_col, y="incidents",
+        color="critical_rate",
+        color_continuous_scale="Reds",
+        hover_data={"critical": True, "critical_pct": True},
+        title=f"Tipos más frecuentes y su % crítico — por {type_col} (top {top_n})"
+    )
+    fig.update_layout(
+        xaxis_title=type_col,
+        yaxis_title="Incidentes (frecuencia)",
+        margin=dict(l=30, r=20, t=60, b=80)
+    )
+    fig.update_xaxes(tickangle=45)
+    # añadir % crítico como texto sobre la barra
+    fig.update_traces(
+        text=g["critical_pct"].astype(str) + "% crítico",
+        textposition="outside"
+    )
+    return fig
+
 # ========= App =========
 app = dash.Dash(__name__)
 app.title = "Incidentes — Exploración de Tiempo de Resolución"
@@ -436,7 +547,27 @@ app.layout = html.Div(
                 dcc.Graph(id="ch-cv"),   # barras de CV
             ]
         ),
-    ],
+        html.Hr(),
+        html.H3("Tipos más frecuentes y críticos"),
+        html.Div(
+            style={"display": "grid", "gridTemplateColumns": "1fr 1fr 1fr", "gap": "12px"},
+            children=[
+                dcc.Dropdown(
+                    id="fc-type",
+                    options=[opt for opt in [{"label":"category","value":"category"},{"label":"subcategory","value":"subcategory"}] if opt["value"] in df.columns],
+                    value="category" if "category" in df.columns else ("subcategory" if "subcategory" in df.columns else None),
+                    clearable=False
+                ),
+                dcc.Dropdown(
+                    id="fc-chart",
+                    options=[{"label":"Barras","value":"bar"},{"label":"Dispersión (bubble)","value":"scatter"}],
+                    value="bar", clearable=False
+                ),
+                dcc.Slider(id="fc-topn", min=5, max=30, step=1, value=15, marks=None, tooltip={"placement":"bottom","always_visible":True}),
+            ]
+        ),
+        dcc.Graph(id="freq-critical"),
+    ],    
 )
 
 # ========= Callbacks =========
@@ -496,6 +627,14 @@ def update_channel_constancy(period, channels_selected):
         channels_filter=channels
     )
     return fig_ts, fig_cv
+@app.callback(
+    Output("freq-critical","figure"),
+    Input("fc-type","value"),
+    Input("fc-chart","value"),
+    Input("fc-topn","value"),
+)
+def update_freq_critical(tcol, chart_kind, topn):
+    return make_freq_critical_figure(df, type_col=tcol, top_n=int(topn or 15), chart=chart_kind or "bar")
 
 # ========= Main =========
 if __name__ == "__main__":

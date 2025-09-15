@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
+import os, json, joblib, tensorflow as tf
 
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
@@ -34,6 +35,8 @@ num_vars = [n for n in candidate_num if n in df.columns]
 df = df.copy()
 df = df[np.isfinite(df[Y])]
 
+ART_DIR = "Tarea_4/artifacts" 
+
 if "opened_at" in df.columns:
     df["opened_at"] = pd.to_datetime(df["opened_at"], errors="coerce")
 else:
@@ -57,6 +60,57 @@ if not df_time.empty:
 else:
     DATE_MIN = pd.Timestamp("2016-01-01").date()
     DATE_MAX = pd.Timestamp("2016-12-31").date()
+
+def load_predict_artifacts(art_dir=ART_DIR):
+    paths = {
+        "model1": os.path.join(art_dir, "model_dnn1.keras"),
+        "model2": os.path.join(art_dir, "model_dnn2.keras"),
+        "temaps": os.path.join(art_dir, "te_maps.json"),
+        "ohe":    os.path.join(art_dir, "ohe_pipe.joblib"),
+        "flists": os.path.join(art_dir, "feature_lists.json"),
+    }
+    for p in paths.values():
+        if not os.path.exists(p):
+            return None
+
+    with open(paths["temaps"], "r") as f:
+        te_maps = json.load(f)
+    with open(paths["flists"], "r") as f:
+        lists = json.load(f)
+
+    ohe_pipe = joblib.load(paths["ohe"])
+    model2 = tf.keras.models.load_model(paths["model2"])  # usamos el de 2 capas por defecto
+
+    LOW_CAT = lists["LOW_CAT"]
+    HIGH_CAT = lists["HIGH_CAT"]
+    return {"model": model2, "ohe_pipe": ohe_pipe, "te_maps": te_maps, "LOW_CAT": LOW_CAT, "HIGH_CAT": HIGH_CAT}
+
+ART = load_predict_artifacts()
+
+if ART is not None:
+    PRED_LOW = [c for c in ART["LOW_CAT"] if c in df.columns]
+    PRED_HIGH = [c for c in ART["HIGH_CAT"] if c in df.columns]
+    PRED_COLS = PRED_LOW + PRED_HIGH
+
+    def col_dropdown(col):
+        # opciones desde los datos (puedes escribir un valor no listado)
+        opts = sorted(df[col].dropna().astype(str).unique(), key=lambda v: v.lower()) if col in df.columns else []
+        return html.Div([
+            html.Div(col, style={"fontWeight":600, "marginBottom":"4px"}),
+            dcc.Dropdown(
+                id=f"pred-{col}",
+                options=[{"label": o, "value": o} for o in opts],
+                value=None,
+                placeholder="Selecciona o escribe...",
+                searchable=True,
+                clearable=True
+            )
+        ])
+
+    PRED_CONTROLS = [col_dropdown(c) for c in PRED_COLS]
+else:
+    PRED_LOW = PRED_HIGH = PRED_COLS = []
+    PRED_CONTROLS = [html.Div("Aún no hay artefactos del modelo. Genera Tarea_4/artifacts.", style={"color":"#aa0000"})]
 
 # ========= Funciones de figura =========
 def make_boxplot(factor: str):
@@ -402,10 +456,6 @@ def make_freq_critical_figure(
     )
     return fig
 
-import json, os
-
-ART_DIR = "Tarea_4/artifacts"  # ajusta si tu estructura difiere
-
 def load_model_artifacts(art_dir=ART_DIR):
     """Carga predicciones y métricas guardadas por el script de Tarea_4."""
     preds_path = os.path.join(art_dir, "predictions_test.csv")
@@ -416,6 +466,7 @@ def load_model_artifacts(art_dir=ART_DIR):
     with open(metrics_path, "r") as f:
         metrics = json.load(f)
     return preds, pd.DataFrame(metrics)
+
 
 def make_regression_figures(preds_df: pd.DataFrame, model_key: str):
     """
@@ -462,7 +513,70 @@ def make_regression_figures(preds_df: pd.DataFrame, model_key: str):
     fig3.update_layout(margin=dict(l=30, r=20, t=60, b=40))
 
     return fig1, fig2, fig3
+def load_predict_artifacts(art_dir=ART_DIR):
+    paths = {
+        "model1": os.path.join(art_dir, "model_dnn1.keras"),
+        "model2": os.path.join(art_dir, "model_dnn2.keras"),
+        "temaps": os.path.join(art_dir, "te_maps.json"),
+        "ohe":    os.path.join(art_dir, "ohe_pipe.joblib"),
+        "flists": os.path.join(art_dir, "feature_lists.json"),
+    }
+    for p in paths.values():
+        if not os.path.exists(p):
+            return None
 
+    with open(paths["temaps"], "r") as f:
+        te_maps = json.load(f)
+    with open(paths["flists"], "r") as f:
+        lists = json.load(f)
+
+    ohe_pipe = joblib.load(paths["ohe"])
+    model2 = tf.keras.models.load_model(paths["model2"])  # usamos el de 2 capas por defecto
+
+    LOW_CAT = lists["LOW_CAT"]
+    HIGH_CAT = lists["HIGH_CAT"]
+    return {"model": model2, "ohe_pipe": ohe_pipe, "te_maps": te_maps, "LOW_CAT": LOW_CAT, "HIGH_CAT": HIGH_CAT}
+
+ART = load_predict_artifacts()
+
+def apply_te_series(x_value, mapping: dict, global_mean: float):
+    """Aplica TE a un valor (o NaN) devolviendo float."""
+    if x_value is None or (isinstance(x_value, float) and np.isnan(x_value)):
+        return float(global_mean)
+    return float(mapping.get(str(x_value), global_mean))
+
+def score_single_example(inputs_dict: dict, ART):
+    """
+    inputs_dict: {col: valor} SOLO con columnas LOW_CAT+HIGH_CAT
+    Devuelve y_pred (horas) usando el modelo y los artefactos.
+    """
+    LOW_CAT = ART["LOW_CAT"]; HIGH_CAT = ART["HIGH_CAT"]
+    ohe_pipe = ART["ohe_pipe"]; te_maps = ART["te_maps"]; model = ART["model"]
+
+    # --- Target Encoding en HIGH_CAT ---
+    te_feats = []
+    for col in HIGH_CAT:
+        te_info = te_maps.get(col, None)
+        if te_info is None:
+            # si faltara el mapeo, usa 0 como respaldo
+            te_feats.append([0.0])
+        else:
+            te_val = apply_te_series(inputs_dict.get(col), te_info["map"], te_info["global"])
+            te_feats.append([te_val])
+    X_te = np.hstack(te_feats).astype("float32") if te_feats else np.empty((1,0), dtype="float32")
+
+    # --- OHE + Imputer en LOW_CAT ---
+    if LOW_CAT:
+        df_low = pd.DataFrame({c: [inputs_dict.get(c)] for c in LOW_CAT})
+        X_ohe = ohe_pipe.transform(df_low)
+        X_ohe = np.asarray(X_ohe, dtype="float32")
+    else:
+        X_ohe = np.empty((1,0), dtype="float32")
+
+    # --- Ensamble y predicción ---
+    X = np.hstack([X_te, X_ohe]).astype("float32")  # el modelo ya contiene Normalization
+    y_pred = model.predict(X, verbose=0).reshape(-1)[0]
+    return float(y_pred)
 # ========= App =========
 app = dash.Dash(__name__)
 app.title = "Incidentes — Exploración de Tiempo de Resolución"
@@ -668,6 +782,23 @@ app.layout = html.Div(
                 dcc.Graph(id="reg-resid-hist"),
             ]
         ),
+        html.Hr(style={"margin": "18px 0"}),
+
+        html.H3("Predicción interactiva del tiempo de resolución"),
+        html.P("Modifica las variables predictoras para obtener una estimación (horas)."),
+
+        html.Div(
+            style={"display":"grid","gridTemplateColumns":"repeat(3, minmax(220px, 1fr))","gap":"12px"},
+            children=PRED_CONTROLS
+        ),
+
+        html.Div(
+            style={"display":"flex","gap":"12px","alignItems":"center","marginTop":"12px"},
+            children=[
+                html.Button("Calcular predicción", id="pred-btn", n_clicks=0, className="button"),
+                html.Div(id="pred-result", style={"fontSize":"18px","fontWeight":600})
+            ]
+        ),
     ],    
 )
 
@@ -786,6 +917,34 @@ def show_regression_metrics(model_key, show):
             ], style={"border":"1px solid #ddd","borderRadius":"10px","padding":"10px","minWidth":"120px"}),
         ]
     )
+# === Callback de predicción interactiva ===
+if ART is not None:
+    from dash.dependencies import Input as DInput
+
+    pred_inputs = [DInput(f"pred-{c}", "value") for c in PRED_COLS]
+
+    @app.callback(
+        Output("pred-result","children"),
+        [Input("pred-btn","n_clicks")] + pred_inputs,
+        prevent_initial_call=True
+    )
+    def on_predict(n_clicks, *values):
+        if ART is None:
+            return "Modelo no disponible. Genera artefactos en Tarea_4."
+        # arma diccionario {col: valor}
+        inputs_dict = {}
+        for c, v in zip(PRED_COLS, values):
+            inputs_dict[c] = None if v in (None, "", "None", "nan") else v
+
+        try:
+            y_hat = score_single_example(inputs_dict, ART)
+            return f"Tiempo estimado: {y_hat:.2f} horas"
+        except Exception as e:
+            return f"Error al predecir: {e}"
+else:
+    @app.callback(Output("pred-result","children"), Input("pred-btn","n_clicks"), prevent_initial_call=True)
+    def _no_artifacts(_):
+        return "Modelo no disponible. Genera artefactos en Tarea_4."
 
 # ========= Main =========
 if __name__ == "__main__":

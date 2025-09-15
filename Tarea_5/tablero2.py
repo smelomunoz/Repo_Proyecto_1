@@ -402,6 +402,67 @@ def make_freq_critical_figure(
     )
     return fig
 
+import json, os
+
+ART_DIR = "Tarea_4/artifacts"  # ajusta si tu estructura difiere
+
+def load_model_artifacts(art_dir=ART_DIR):
+    """Carga predicciones y métricas guardadas por el script de Tarea_4."""
+    preds_path = os.path.join(art_dir, "predictions_test.csv")
+    metrics_path = os.path.join(art_dir, "metrics.json")
+    if not (os.path.exists(preds_path) and os.path.exists(metrics_path)):
+        return None, None
+    preds = pd.read_csv(preds_path)
+    with open(metrics_path, "r") as f:
+        metrics = json.load(f)
+    return preds, pd.DataFrame(metrics)
+
+def make_regression_figures(preds_df: pd.DataFrame, model_key: str):
+    """
+    Devuelve: fig_pred_vs_true, fig_resid_vs_pred, fig_resid_hist
+    """
+    use = preds_df[preds_df["model"] == model_key].copy()
+    if use.empty:
+        msg = f"Sin predicciones para '{model_key}'."
+        return px.scatter(title=msg), px.scatter(title=msg), px.histogram(title=msg)
+
+    use["residual"] = use["y_true"] - use["y_pred"]
+
+    # 1) Predicho vs Real
+    fig1 = px.scatter(
+        use, x="y_true", y="y_pred",
+        opacity=0.6,
+        title=f"Predicho vs Real — {model_key}",
+        labels={"y_true":"Real (h)", "y_pred":"Predicho (h)"}
+    )
+    # línea y=x
+    minv = float(np.nanmin([use["y_true"].min(), use["y_pred"].min()]))
+    maxv = float(np.nanmax([use["y_true"].max(), use["y_pred"].max()]))
+    fig1.add_shape(type="line", x0=minv, y0=minv, x1=maxv, y1=maxv,
+                   line=dict(dash="dash"))
+    fig1.update_layout(margin=dict(l=30, r=20, t=60, b=40))
+
+    # 2) Residuos vs Predicho
+    fig2 = px.scatter(
+        use, x="y_pred", y="residual",
+        opacity=0.6,
+        title=f"Residuos vs Predicho — {model_key}",
+        labels={"y_pred":"Predicho (h)", "residual":"Residuo (h)"},
+    )
+    fig2.add_hline(y=0, line_dash="dash")
+    fig2.update_layout(margin=dict(l=30, r=20, t=60, b=40))
+
+    # 3) Distribución de residuos
+    fig3 = px.histogram(
+        use, x="residual", nbins=40,
+        title=f"Distribución de residuos — {model_key}",
+        labels={"residual":"Residuo (h)"}
+    )
+    fig3.add_vline(x=0, line_dash="dash")
+    fig3.update_layout(margin=dict(l=30, r=20, t=60, b=40))
+
+    return fig1, fig2, fig3
+
 # ========= App =========
 app = dash.Dash(__name__)
 app.title = "Incidentes — Exploración de Tiempo de Resolución"
@@ -567,6 +628,46 @@ app.layout = html.Div(
             ]
         ),
         dcc.Graph(id="freq-critical"),
+        html.Hr(style={"margin": "18px 0"}),
+
+        html.H3("Evaluación del modelo de regresión (tiempo de resolución)"),
+        html.P("Selecciona el modelo para ver Predicho vs Real, Residuos vs Predicho y Distribución de residuos."),
+
+        html.Div(
+            style={"display": "grid", "gridTemplateColumns": "1fr 1fr 1fr", "gap": "12px"},
+            children=[
+                dcc.Dropdown(
+                    id="reg-model",
+                    options=[
+                        {"label": "DNN (1 oculta)", "value": "DNN_1_hidden"},
+                        {"label": "DNN (2 ocultas)", "value": "DNN_2_hidden"},
+                    ],
+                    value="DNN_2_hidden",
+                    clearable=False
+                ),
+                dcc.RadioItems(
+                    id="reg-show-metrics",
+                    options=[{"label":"Mostrar métricas","value":"yes"}],
+                    value="yes",
+                    labelStyle={"display":"inline-block", "marginRight":"12px"}
+                ),
+                html.Div(id="reg-metrics")
+            ]
+        ),
+
+        html.Div(
+            style={"display": "grid", "gridTemplateColumns": "1.1fr 0.9fr", "gap": "16px", "marginTop": "8px"},
+            children=[
+                dcc.Graph(id="reg-pred-vs-true"),
+                dcc.Graph(id="reg-resid-vs-pred"),
+            ]
+        ),
+        html.Div(
+            style={"display": "grid", "gridTemplateColumns": "1fr", "gap": "16px", "marginTop": "8px"},
+            children=[
+                dcc.Graph(id="reg-resid-hist"),
+            ]
+        ),
     ],    
 )
 
@@ -635,6 +736,56 @@ def update_channel_constancy(period, channels_selected):
 )
 def update_freq_critical(tcol, chart_kind, topn):
     return make_freq_critical_figure(df, type_col=tcol, top_n=int(topn or 15), chart=chart_kind or "bar")
+
+# Carga artefactos una vez (si existen)
+REG_PREDS, REG_METRICS = load_model_artifacts()
+
+@app.callback(
+    Output("reg-pred-vs-true", "figure"),
+    Output("reg-resid-vs-pred", "figure"),
+    Output("reg-resid-hist", "figure"),
+    Input("reg-model", "value"),
+)
+def update_regression_figs(model_key):
+    if REG_PREDS is None:
+        msg = "No se encontraron artefactos. Guarda predictions_test.csv y metrics.json desde Tarea_4."
+        return px.scatter(title=msg), px.scatter(title=msg), px.histogram(title=msg)
+    return make_regression_figures(REG_PREDS, model_key)
+
+
+@app.callback(
+    Output("reg-metrics", "children"),
+    Input("reg-model", "value"),
+    Input("reg-show-metrics", "value"),
+)
+def show_regression_metrics(model_key, show):
+    if show != "yes":
+        return html.Div()
+    if REG_METRICS is None:
+        return html.Div("Métricas no encontradas. Genera Tarea_4/artifacts/metrics.json.", style={"color":"#aa0000"})
+
+    row = REG_METRICS[REG_METRICS["model"] == model_key]
+    if row.empty:
+        return html.Div(f"Sin métricas para {model_key}", style={"color":"#aa0000"})
+    r = row.iloc[0]
+    # Tarjetitas simples con MAE/MSE/R2
+    return html.Div(
+        style={"display":"flex","gap":"16px","alignItems":"stretch"},
+        children=[
+            html.Div([
+                html.Div("MAE", style={"fontWeight":600}),
+                html.Div(f"{r['MAE']:.3f} h")
+            ], style={"border":"1px solid #ddd","borderRadius":"10px","padding":"10px","minWidth":"120px"}),
+            html.Div([
+                html.Div("MSE", style={"fontWeight":600}),
+                html.Div(f"{r['MSE']:.3f}")
+            ], style={"border":"1px solid #ddd","borderRadius":"10px","padding":"10px","minWidth":"120px"}),
+            html.Div([
+                html.Div("R²", style={"fontWeight":600}),
+                html.Div(f"{r['R2']:.4f}")
+            ], style={"border":"1px solid #ddd","borderRadius":"10px","padding":"10px","minWidth":"120px"}),
+        ]
+    )
 
 # ========= Main =========
 if __name__ == "__main__":

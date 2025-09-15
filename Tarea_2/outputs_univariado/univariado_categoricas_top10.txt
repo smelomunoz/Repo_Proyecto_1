@@ -1,0 +1,86 @@
+
+>>> incident_state
+                    count     share
+incident_state                     
+New                 16397  0.658038
+Active               6503  0.260976
+Resolved             1819  0.072999
+Awaiting User Info    193  0.007745
+Awaiting Problem        6  0.000241
+
+>>> contact_type
+                count     share
+contact_type                   
+Phone           24684  0.990609
+Self service      161  0.006461
+Email              61  0.002448
+IVR                 9  0.000361
+Direct opening      3  0.000120
+
+>>> category
+             count     share
+category                    
+Category 42   3629  0.145638
+Category 26   3268  0.131150
+Category 53   2655  0.106549
+Category 46   2243  0.090015
+Category 32   1495  0.059997
+Category 9    1141  0.045790
+Category 37   1135  0.045549
+Category 23   1071  0.042981
+Category 20   1067  0.042820
+Category 57    916  0.036761
+
+>>> subcategory
+                 count     share
+subcategory                     
+Subcategory 174   6644  0.266635
+Subcategory 223   3736  0.149932
+Subcategory 175   1850  0.074244
+Subcategory 164   1242  0.049843
+Subcategory 9      877  0.035195
+Subcategory 135    573  0.022995
+Subcategory 275    563  0.022594
+Subcategory 170    493  0.019785
+Subcategory 36     442  0.017738
+Subcategory 28     424  0.017016
+
+>>> assignment_group
+                  count     share
+assignment_group                 
+Group 70          12791  0.513324
+Group 20           1367  0.054860
+?                   906  0.036359
+Group 25            764  0.030661
+Group 24            698  0.028012
+Group 64            622  0.024962
+Group 65            501  0.020106
+Group 55            416  0.016695
+Group 66            389  0.015611
+Group 39            375  0.015049
+
+>>> assigned_to
+              count     share
+assigned_to                  
+?              7140  0.286540
+Resolver 17    1632  0.065495
+Resolver 13    1449  0.058151
+Resolver 194    637  0.025564
+Resolver 33     636  0.025524
+Resolver 94     477  0.019143
+Resolver 57     402  0.016133
+Resolver 69     396  0.015892
+Resolver 28     393  0.015772
+Resolver 192    383  0.015370
+
+>>> made_sla
+          count    share
+made_sla                
+True      24917  0.99996
+False         1  0.00004
+
+>>> knowledge
+           count     share
+knowledge                 
+False      21261  0.853239
+True        3657  0.146761

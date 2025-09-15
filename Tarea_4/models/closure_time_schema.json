@@ -1,0 +1,35 @@
+{
+  "numeric": [
+    "reassignment_count",
+    "reopen_count",
+    "sys_mod_count",
+    "opened_year",
+    "opened_month",
+    "opened_day",
+    "opened_hour",
+    "opened_dow",
+    "opened_dom",
+    "opened_week",
+    "opened_is_weekend",
+    "opened_eom",
+    "opened_bom"
+  ],
+  "boolean": [
+    "active",
+    "made_sla",
+    "knowledge",
+    "u_priority_confirmation",
+    "is_outlier_reassignment",
+    "is_outlier_reopen",
+    "is_invalid_time",
+    "is_outlier_resolution_time",
+    "is_outlier_closure_time"
+  ],
+  "categorical": [
+    "incident_state",
+    "contact_type",
+    "category",
+    "notify",
+    "closed_code"
+  ]
+}

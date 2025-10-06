@@ -408,24 +408,39 @@ def score_single_example(inputs_dict: dict, ART):
     LOW_CAT = ART["LOW_CAT"]; HIGH_CAT = ART["HIGH_CAT"]
     ohe_pipe = ART["ohe_pipe"]; te_maps = ART["te_maps"]; model = ART["model"]
 
-    te_feats = []
+    # ---- 1) Target Encoding -> fila 2D (1, n_te) ----
+    te_vals = []
     for col in HIGH_CAT:
         te_info = te_maps.get(col, None)
         if te_info is None:
-            te_feats.append([0.0])
+            te_vals.append(0.0)  # o un fallback razonable
         else:
             te_val = apply_te_value(inputs_dict.get(col), te_info["map"], te_info["global"])
-            te_feats.append([te_val])
-    X_te = np.hstack(te_feats).astype("float32") if te_feats else np.empty((1,0), dtype="float32")
+            te_vals.append(float(te_val))
 
+    if len(te_vals) > 0:
+        X_te = np.array(te_vals, dtype="float32").reshape(1, -1)   # <-- 2D
+    else:
+        X_te = np.empty((1, 0), dtype="float32")
+
+    # ---- 2) One-Hot Encoding -> fila 2D (1, n_ohe) ----
     if LOW_CAT:
         df_low = pd.DataFrame({c: [inputs_dict.get(c)] for c in LOW_CAT})
         X_ohe = ohe_pipe.transform(df_low)
-        X_ohe = np.asarray(X_ohe, dtype="float32")
+        # por si viene sparse:
+        if hasattr(X_ohe, "toarray"):
+            X_ohe = X_ohe.toarray()
+        X_ohe = np.asarray(X_ohe, dtype="float32")                 # <-- 2D
+        if X_ohe.ndim == 1:                                       # seguridad extra
+            X_ohe = X_ohe.reshape(1, -1)
     else:
-        X_ohe = np.empty((1,0), dtype="float32")
+        X_ohe = np.empty((1, 0), dtype="float32")
 
-    X = np.hstack([X_te, X_ohe]).astype("float32")  # Normalization está dentro del modelo
+    # ---- 3) Concatenar horizontalmente (mismas dimensiones) ----
+    X = np.hstack([X_te, X_ohe]).astype("float32")                 # (1, n_total)
+    # sanity check opcional:
+    # assert X.ndim == 2 and X.shape[0] == 1, f"X shape raro: {X.shape}"
+
     y_pred = model.predict(X, verbose=0).reshape(-1)[0]
     return float(y_pred)
 

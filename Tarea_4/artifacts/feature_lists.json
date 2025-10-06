@@ -1,0 +1,14 @@
+{
+  "LOW_CAT": [
+    "impact",
+    "urgency",
+    "contact_type",
+    "notify",
+    "incident_state"
+  ],
+  "HIGH_CAT": [
+    "category",
+    "subcategory",
+    "location"
+  ]
+}
